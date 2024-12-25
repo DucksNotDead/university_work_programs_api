@@ -1,4 +1,10 @@
-import { IsEnum, IsInt, IsOptional, Min } from '@nestjs/class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from '@nestjs/class-validator';
 import { EStudyType } from '../../../shared/enums';
 
 export class UpdateProgramSubsectionDto {
@@ -15,4 +21,8 @@ export class UpdateProgramSubsectionDto {
   @Min(1)
   @IsOptional()
   volume?: number;
+
+  @IsString()
+  @IsOptional()
+  label: string;
 }

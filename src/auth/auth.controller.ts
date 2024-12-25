@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Post,
+  Req,
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -29,8 +30,8 @@ export class AuthController {
     return this.authService.logout(res);
   }
 
-  @Post('auth')
-  getProfile() {
-    return { message: 'This is a protected route' };
+  @Post('')
+  getProfile(@Req() req) {
+    return req.user;
   }
 }

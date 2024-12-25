@@ -11,7 +11,7 @@ export class StudyPlansService {
   async create(createStudyPlanDto: CreateStudyPlanDto) {
     const { speciality_id, year, description } = createStudyPlanDto;
     const query =
-      'INSERT INTO study-plans (speciality_id, year, description) VALUES ($1, $2, $3) RETURNING *';
+      'INSERT INTO study_plans (speciality_id, year, description) VALUES ($1, $2, $3) RETURNING *';
     const result = await this.databaseService.query(query, [
       speciality_id,
       year,
@@ -22,14 +22,14 @@ export class StudyPlansService {
 
   // Получение всех учебных планов
   async findAll() {
-    const query = 'SELECT * FROM study-plans';
+    const query = 'SELECT * FROM study_plans';
     const result = await this.databaseService.query(query);
     return result; // Возвращаем все учебные планы
   }
 
   // Получение учебного плана по ID
   async findOne(id: number) {
-    const query = 'SELECT * FROM study-plans WHERE id = $1';
+    const query = 'SELECT * FROM study_plans WHERE id = $1';
     const result = await this.databaseService.query(query, [id]);
     return result[0]; // Возвращаем учебный план по ID
   }
@@ -38,7 +38,7 @@ export class StudyPlansService {
   async update(id: number, updateStudyPlanDto: UpdateStudyPlanDto) {
     const { speciality_id, year, description } = updateStudyPlanDto;
     const query =
-      'UPDATE study-plans SET speciality_id = $1, year = $2, description = $3 WHERE id = $4 RETURNING *';
+      'UPDATE study_plans SET speciality_id = $1, year = $2, description = $3 WHERE id = $4 RETURNING *';
     const result = await this.databaseService.query(query, [
       speciality_id,
       year,
@@ -50,7 +50,7 @@ export class StudyPlansService {
 
   // Удаление учебного плана
   async remove(id: number) {
-    const query = 'DELETE FROM study-plans WHERE id = $1 RETURNING *';
+    const query = 'DELETE FROM study_plans WHERE id = $1 RETURNING *';
     const result = await this.databaseService.query(query, [id]);
     return result[0]; // Возвращаем удаленный учебный план
   }

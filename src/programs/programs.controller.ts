@@ -5,7 +5,7 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
+  Delete, Res,
 } from '@nestjs/common';
 import { ProgramsService } from './programs.service';
 import { CreateProgramDto } from './dto/create-program.dto';
@@ -33,6 +33,17 @@ export class ProgramsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.programsService.findOne(+id);
+  }
+
+  @Public()
+  @Get('reports/:id')
+  async exportReport(@Param('id') id: string, @Res() res) {
+    const file = await this.programsService.createReportFile(Number(id))
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=program_report_russian.xlsx');
+
+    res.send(file);
   }
 
   @Roles('Admin', 'Teacher')

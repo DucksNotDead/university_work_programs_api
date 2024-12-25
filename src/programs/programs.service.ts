@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from 'src/database/database.service'; // Импортируем DatabaseService
 import { CreateProgramDto } from './dto/create-program.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
+import * as XLSX from 'xlsx';
 
 @Injectable()
 export class ProgramsService {
@@ -33,6 +34,93 @@ export class ProgramsService {
     const query = 'SELECT * FROM programs WHERE id = $1';
     const result = await this.databaseService.query(query, [id]);
     return result[0]; // Возвращаем программу по ID
+  }
+
+  //Получение данных для отчёта
+  private async getReport(id: number) {
+    const query = `WITH subsection_data AS (
+    SELECT
+        psu.section_id,
+        json_agg(
+            json_build_object(
+                'subsection_id', psu.id,
+                'subsection_type', psu.type,
+                'subsection_volume', psu.volume
+            )
+        ) AS subsections,
+        SUM(psu.volume) AS total_subsection_volume
+    FROM
+        program_subsections psu
+    GROUP BY
+        psu.section_id
+)
+SELECT
+    p.id AS program_id,
+    p.questions,
+    p.skills,
+    p.literature,
+    d.name AS discipline_name,  -- Название дисциплины
+    json_agg(
+        json_build_object(
+            'section_id', ps.id,
+            'section_title', ps.title,
+            'subsections', sd.subsections,
+            'total_subsection_volume', sd.total_subsection_volume
+        )
+    ) AS sections,
+    SUM(sd.total_subsection_volume) AS total_program_volume
+FROM
+    programs p
+JOIN
+    program_sections ps ON p.id = ps.standard_id
+JOIN standards st ON st.id = p.standard_id
+JOIN
+    disciplines d ON st.discipline_id = d.id  -- Добавляем соединение с дисциплинами
+LEFT JOIN
+    subsection_data sd ON ps.id = sd.section_id
+WHERE
+    p.id = $1
+GROUP BY
+    p.id, d.name; `;
+
+    const result = await this.databaseService.query(query, [id]);
+
+    return result[0];
+  }
+
+  // Экспорт отчёта
+  async createReportFile(id: number) {
+    const report = await this.getReport(id);
+
+    const workbook = XLSX.utils.book_new();
+    const sheetData = report.sections
+      .map((section) => {
+        return section.subsections.map((subsection) => ({
+          'ID программы': report.program_id,
+          'Дисциплина': report.discipline_name,
+          'Раздел': section.section_title,
+          'Тип подраздела': subsection.subsection_type,
+          'Объем подраздела': subsection.subsection_volume,
+        }));
+      })
+      .flat();
+
+    const worksheet = XLSX.utils.json_to_sheet(sheetData, {
+      header: [
+        'ID программы',
+        'Дисциплина',
+        'Раздел',
+        'Тип подраздела',
+        'Объем подраздела',
+      ],
+    });
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      'Отчёт рабочая программа',
+    );
+
+    return await XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
   }
 
   // Обновление программы

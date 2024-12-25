@@ -20,7 +20,7 @@ export class AuthService {
 	}
 
 	async login(user: any, res: any) {
-		const payload = { username: user.login, sub: user.id, role: user.role };
+		const payload = { username: user.login, sub: user.id, role: user.role, fio: user.fio };
 		const token = this.jwtService.sign(payload);
 
 		// Устанавливаем токен в cookies

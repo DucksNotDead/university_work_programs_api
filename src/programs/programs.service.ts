@@ -96,7 +96,6 @@ GROUP BY
       [EStudyType.Lecture]: 'Лекции',
       [EStudyType.Lab]: 'Лабараторные',
       [EStudyType.Practice]: 'Практика',
-      [EStudyType.CoursePaper]: 'Курсовая работа',
     };
 
     const report = await this.getReport(id);

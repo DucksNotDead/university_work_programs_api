@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from 'src/database/database.service'; // Импортируем DatabaseService
 import { CreateProgramDto } from './dto/create-program.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
-import * as XLSX from 'xlsx';
+import * as ExcelJS from 'exceljs';
+import Workbook from 'exceljs/index';
+import { EStudyType } from '../../shared/enums';
 
 @Injectable()
 export class ProgramsService {
@@ -89,38 +91,58 @@ GROUP BY
   }
 
   // Экспорт отчёта
-  async createReportFile(id: number) {
+  async createReportFile(id: number): Workbook {
+    const ruStudyTypes: Record<EStudyType, string> = {
+      [EStudyType.Lecture]: 'Лекции',
+      [EStudyType.Lab]: 'Лабараторные',
+      [EStudyType.Practice]: 'Практика',
+      [EStudyType.CoursePaper]: 'Курсовая работа',
+    };
+
     const report = await this.getReport(id);
 
-    const workbook = XLSX.utils.book_new();
-    const sheetData = report.sections
-      .map((section) => {
-        return section.subsections.map((subsection) => ({
-          'ID программы': report.program_id,
-          'Дисциплина': report.discipline_name,
-          'Раздел': section.section_title,
-          'Тип подраздела': subsection.subsection_type,
-          'Объем подраздела': subsection.subsection_volume,
-        }));
-      })
-      .flat();
+    // Создание Workbook
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Рабочая программа');
 
-    const worksheet = XLSX.utils.json_to_sheet(sheetData, {
-      header: [
-        'ID программы',
-        'Дисциплина',
-        'Раздел',
-        'Тип подраздела',
-        'Объем подраздела',
-      ],
-    });
-    XLSX.utils.book_append_sheet(
-      workbook,
-      worksheet,
-      'Отчёт рабочая программа',
-    );
+    // Заголовки для программы
+    worksheet.columns = [
+      { header: 'ID', key: 'id', width: 15 },
+      { header: 'Название дисциплины', key: 'name', width: 20 },
+      { header: 'Полный объём', key: 'volume', width: 10 },
+    ];
+    worksheet.addRow([
+      report.program_id,
+      report.discipline_name,
+      report.total_program_volume,
+    ]);
 
-    return await XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+    // Пробел между секциями
+    worksheet.addRow([]);
+
+    // Заголовки секций
+    worksheet.addRow(['Раздел', 'Подраздел', 'Объём']);
+
+    // Данные секций и подразделов
+    for (const section of report.sections) {
+      const sectionRow = worksheet.addRow([
+        section.section_title,
+        '',
+        section.total_subsection_volume,
+      ]);
+      // Сделаем жирным текст для секций
+      sectionRow.font = { bold: true };
+
+      for (const subsection of section.subsections) {
+        worksheet.addRow([
+          '',
+          ruStudyTypes[subsection.subsection_type],
+          subsection.subsection_volume,
+        ]);
+      }
+    }
+
+    return workbook;
   }
 
   // Обновление программы

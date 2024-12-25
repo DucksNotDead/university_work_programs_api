@@ -4,7 +4,8 @@ import { CreateProgramDto } from './dto/create-program.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
 import * as ExcelJS from 'exceljs';
 import Workbook from 'exceljs/index';
-import { EStudyType } from '../../shared/enums';
+import { EStudyType, ruStudyTypes } from '../../shared/enums';
+import { ProgramReport } from './entities/program.entity';
 
 @Injectable()
 export class ProgramsService {
@@ -40,50 +41,56 @@ export class ProgramsService {
 
   //Получение данных для отчёта
   private async getReport(id: number) {
-    const query = `WITH subsection_data AS (
-    SELECT
-        psu.section_id,
-        json_agg(
-            json_build_object(
-                'subsection_id', psu.id,
-                'subsection_type', psu.type,
-                'subsection_volume', psu.volume
-            )
-        ) AS subsections,
-        SUM(psu.volume) AS total_subsection_volume
-    FROM
-        program_subsections psu
-    GROUP BY
-        psu.section_id
-)
+    const query = `WITH
+    subsection_data AS (
+        SELECT
+            psu.section_id,
+            json_agg(
+                json_build_object(
+                    'id', psu.id,
+                    'label', psu.label,
+                    'type', psu.type,
+                    'volume', psu.volume
+                )
+            ) AS items,
+            SUM(psu.volume) AS total
+        FROM
+            program_subsections psu
+        GROUP BY
+            psu.section_id
+    ),
+    section_data AS (
+        SELECT
+            ps.standard_id,
+            json_agg(
+                json_build_object(
+                    'id', ps.id,
+                    'title', ps.title,
+                    'subsections', ssd.items
+                )
+            ) as items,
+            SUM(ssd.total) as total
+        FROM
+            program_sections ps
+        LEFT JOIN
+            subsection_data ssd ON ps.id = ssd.section_id
+        GROUP BY ps.standard_id
+    )
 SELECT
-    p.id AS program_id,
-    p.questions,
-    p.skills,
-    p.literature,
-    d.name AS discipline_name,  -- Название дисциплины
-    json_agg(
-        json_build_object(
-            'section_id', ps.id,
-            'section_title', ps.title,
-            'subsections', sd.subsections,
-            'total_subsection_volume', sd.total_subsection_volume
-        )
-    ) AS sections,
-    SUM(sd.total_subsection_volume) AS total_program_volume
+    program.*,
+    discipline.name AS discipline_name,
+    section.items as sections,
+    section.total
 FROM
-    programs p
+    programs program
 JOIN
-    program_sections ps ON p.id = ps.standard_id
-JOIN standards st ON st.id = p.standard_id
+    standards standard ON standard.id = program.standard_id
 JOIN
-    disciplines d ON st.discipline_id = d.id  -- Добавляем соединение с дисциплинами
+    disciplines discipline ON standard.discipline_id = discipline.id
 LEFT JOIN
-    subsection_data sd ON ps.id = sd.section_id
+    section_data section ON section.standard_id = program.standard_id
 WHERE
-    p.id = $1
-GROUP BY
-    p.id, d.name; `;
+    program.id = $1`;
 
     const result = await this.databaseService.query(query, [id]);
 
@@ -92,54 +99,65 @@ GROUP BY
 
   // Экспорт отчёта
   async createReportFile(id: number): Workbook {
-    const ruStudyTypes: Record<EStudyType, string> = {
-      [EStudyType.Lecture]: 'Лекции',
-      [EStudyType.Lab]: 'Лабараторные',
-      [EStudyType.Practice]: 'Практика',
-    };
+    const report: ProgramReport = await this.getReport(id);
 
-    const report = await this.getReport(id);
-
-    // Создание Workbook
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Рабочая программа');
 
-    // Заголовки для программы
-    worksheet.columns = [
-      { header: 'ID', key: 'id', width: 15 },
-      { header: 'Название дисциплины', key: 'name', width: 20 },
-      { header: 'Полный объём', key: 'volume', width: 10 },
-    ];
     worksheet.addRow([
-      report.program_id,
+      'ID',
+      'Название дисциплины',
+      'Полный объём',
+      '',
+      'Контрольные вопросы',
+      'Умения, навыки',
+      'Список литературы',
+    ]);
+    const mainRow = worksheet.addRow([
+      `${report.id}`,
       report.discipline_name,
-      report.total_program_volume,
+      Number(report.total ?? 0),
+      '',
+      report.questions,
+      report.skills,
+      report.literature,
     ]);
 
-    // Пробел между секциями
+    worksheet.getCell('C2').font = { bold: true, color: { theme: 4 } };
+
     worksheet.addRow([]);
 
-    // Заголовки секций
-    worksheet.addRow(['Раздел', 'Подраздел', 'Объём']);
-
-    // Данные секций и подразделов
-    for (const section of report.sections) {
-      const sectionRow = worksheet.addRow([
-        section.section_title,
-        '',
-        section.total_subsection_volume,
+    if (report.sections?.length) {
+      worksheet.addRow([
+        'Раздел/Подраздел',
+        'Вид занятий',
+        'Длительность изложения',
       ]);
-      // Сделаем жирным текст для секций
-      sectionRow.font = { bold: true };
-
-      for (const subsection of section.subsections) {
-        worksheet.addRow([
-          '',
-          ruStudyTypes[subsection.subsection_type],
-          subsection.subsection_volume,
-        ]);
-      }
     }
+
+    report.sections?.forEach((section) => {
+      const sectionRow = worksheet.addRow([section.title, '', section.total]);
+      sectionRow.font = { bold: true };
+      section.subsections?.forEach((subsection) => {
+        worksheet.addRow([
+          `— ${subsection.label}`,
+          ruStudyTypes[subsection.type],
+          subsection.volume,
+        ]);
+      });
+    });
+
+    //auto-fit
+    worksheet.columns.forEach(function (column, i) {
+      let maxLength = 0;
+      column['eachCell']({ includeEmpty: true }, function (cell) {
+        const columnLength = cell.value ? cell.value.toString().length + 2 : 10;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = maxLength < 10 ? 10 : maxLength;
+    });
 
     return workbook;
   }

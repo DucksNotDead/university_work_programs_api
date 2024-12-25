@@ -44,7 +44,7 @@ export class ProgramsController {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader(
       'Content-Disposition',
-      'attachment; filename="Program_Data.xlsx"',
+      'attachment; filename="work_program.xlsx"',
     );
 
     await file.xlsx.write(res);
